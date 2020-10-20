@@ -1,0 +1,96 @@
+---
+title: "Predicting Amount of Activity from Wearable Devices"
+author: "Ashwin"
+date: "20/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Model
+### Initial Loading
+```{r}
+library(caret)
+library(randomForest)
+if (!file.exists('train.csv')) {
+  download.file(url = 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv', 
+                destfile = 'train.csv', method = 'curl', quiet = TRUE) 
+}
+if (!file.exists('test.csv')) {
+  download.file(url = 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv', 
+                destfile = 'test.csv', method = 'curl', quiet = TRUE)
+}
+train_raw <- read.csv('train.csv')
+test_raw <- read.csv('test.csv')
+```
+
+### Preprocessing the data set
+1. We search through the data in each column and delete characteristics that are unnecessary to quantify the exercise (eg: col no and time)
+```{r}
+str(train_raw)
+train_cleaned <- train_raw[, 6:ncol(train_raw)]
+```
+
+2. 70% of the data is training set and 30% of it is testing set
+```{r}
+set.seed(23954)
+in_train <- createDataPartition(y = train_cleaned$classe, p = 0.7, list = F)
+training_data <- train_cleaned[in_train, ]
+testing_data <- train_cleaned[-in_train, ]
+```
+
+3. We get rid of similar variables.
+```{r}
+nzv <- nearZeroVar(train_cleaned, saveMetrics = T)
+keep_feat <- row.names(nzv[nzv$nzv == FALSE, ])
+training_data <- training_data[, keep_feat]
+```
+
+4. We get rid of all the variables with NA values.
+```{r}
+training_data <- training_data[, colSums(is.na(training_data)) == 0]
+dim(training_data)
+```
+We still have a lot of features after removal so this is an acceptable process to do.
+
+### Training the Model
+1. A 5-fold cross validation has been set up for training the model.
+```{r}
+mod_ctl <- trainControl(method = 'cv', number = 5)
+```
+
+2. Try to fit a model using random forests.
+```{r}
+set.seed(2384)
+mod_rf <- train(classe ~. , data = training_data, method = 'rf', trControl = mod_ctl)
+mod_rf$finalModel
+pred_rf <- predict(mod_rf, newdata = testing_data)
+confusionMatrix(pred_rf, testing_data$classe)$table
+confusionMatrix(pred_rf, testing_data$classe)$overall[1]
+```
+The accuracy is approximately 99.6% .
+
+3. Fit a model with gradient boosting method
+```{r}
+mod_gbm <- train(classe ~., data = training_data, method = 'gbm', trControl = mod_ctl, verbose = F)
+mod_gbm$finalModel
+pred_gbm <- predict(mod_gbm, newdata = testing_data)
+confusionMatrix(pred_gbm, testing_data$classe)$table
+confusionMatrix(pred_gbm, testing_data$classe)$overall[1]
+```
+The accuracy is approximately 98.8%.
+
+## Quiz Answers
+Rf model results.
+```{r}
+pred_rfTest <- predict(mod_rf, newdata = test_raw)
+pred_rfTest
+```
+Comparing this to the gbm model results.
+```{r}
+pred_gbmTest <- predict(mod_gbm, newdata = test_raw)
+table(pred_rfTest, pred_gbmTest)
+```
+From the confusion matrix above we can see that both the models produce identical results.
